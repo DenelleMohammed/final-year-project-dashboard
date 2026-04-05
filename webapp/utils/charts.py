@@ -87,17 +87,28 @@ def programme_alignment_chart(df: pd.DataFrame, title: str = "Alignment Scores b
 
     data = df.copy()
     if {"programme", "rho_caribbean", "rho_international"}.issubset(data.columns):
-        melted = data.melt(
-            id_vars="programme",
-            value_vars=["rho_caribbean", "rho_international"],
-            var_name="Series",
-            value_name="Score",
-        )
+        value_vars = ["rho_caribbean", "rho_international"]
         labels = {
             "rho_caribbean": "rho Caribbean",
             "rho_international": "rho International",
         }
+        if "rho_ai" in data.columns:
+            value_vars.append("rho_ai")
+            labels["rho_ai"] = "rho AI"
+
+        melted = data.melt(
+            id_vars="programme",
+            value_vars=value_vars,
+            var_name="Series",
+            value_name="Score",
+        )
         melted["Series"] = melted["Series"].map(labels)
+
+        color_map = {
+            "rho Caribbean": PRIMARY_BLUE,
+            "rho International": LIGHT_BLUE,
+            "rho AI": "#2563eb",
+        }
 
         fig = px.bar(
             melted,
@@ -106,10 +117,7 @@ def programme_alignment_chart(df: pd.DataFrame, title: str = "Alignment Scores b
             color="Series",
             barmode="group",
             labels={"programme": "Programme", "Score": "Alignment Score"},
-            color_discrete_map={
-                "rho Caribbean": PRIMARY_BLUE,
-                "rho International": LIGHT_BLUE,
-            },
+            color_discrete_map={key: color_map[key] for key in labels.values()},
             **_base_kwargs(title),
         )
         fig.update_traces(hovertemplate="<b>%{x}</b><br>%{fullData.name}: %{y:.4f}<extra></extra>")

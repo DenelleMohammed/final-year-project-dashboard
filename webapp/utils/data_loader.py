@@ -278,6 +278,41 @@ def _find_weighted_row(weighted: pd.DataFrame, dataset: str) -> pd.Series | None
     return None
 
 
+def _find_alignment_score_row(alignment: pd.DataFrame, *matches: str) -> pd.Series | None:
+    """Locate an alignment row by matching any of the provided labels."""
+    if alignment.empty:
+        return None
+
+    column_lookup = {column.lower(): column for column in alignment.columns}
+    for col in ["dataset", "programme", "category", "program"]:
+        actual_col = column_lookup.get(col)
+        if actual_col is None:
+            continue
+
+        values = alignment[actual_col].astype(str).str.lower()
+        for match in matches:
+            filtered = alignment[values.str.contains(match.lower(), na=False)]
+            if not filtered.empty:
+                return filtered.iloc[0]
+
+    return None
+
+
+def _extract_alignment_score(row: pd.Series | None) -> float | None:
+    """Extract a numeric alignment score from a row if possible."""
+    if row is None:
+        return None
+
+    for col in ["alignment_score", "alignment score", "score"]:
+        if col in row.index:
+            try:
+                return float(row[col])
+            except (TypeError, ValueError):
+                return None
+
+    return None
+
+
 @st.cache_data(show_spinner=False)
 def get_programme_summary(dataset: str) -> dict[str, float | int]:
     """Return static summary values for a programme header card row."""
@@ -347,21 +382,26 @@ def get_programme_summary(dataset: str) -> dict[str, float | int]:
 
 @st.cache_data(show_spinner=False)
 def get_overview_alignment_data() -> pd.DataFrame:
-    """Return the weighted Caribbean and International alignment scores for CS and IT only."""
+    """Return Caribbean, International, and AI alignment scores for CS and IT."""
     weighted = load_weighted_alignment()
+    cs_alignment = load_alignment("cs")
+    it_alignment = load_alignment("it")
+
     if weighted.empty:
         return pd.DataFrame(
             [
-                {"programme": "Computer Science", "rho_caribbean": 0.0, "rho_international": 0.0},
-                {"programme": "Information Technology", "rho_caribbean": 0.0, "rho_international": 0.0},
+                {"programme": "Computer Science", "rho_caribbean": 0.0, "rho_international": 0.0, "rho_ai": float("nan")},
+                {"programme": "Information Technology", "rho_caribbean": 0.0, "rho_international": 0.0, "rho_ai": float("nan")},
             ]
         )
 
     rows: list[dict[str, float | str]] = []
     for label, dataset in [("Computer Science", "cs"), ("Information Technology", "it")]:
         row = _find_weighted_row(weighted, dataset)
+        alignment = cs_alignment if dataset == "cs" else it_alignment
         if row is None:
-            rows.append({"programme": label, "rho_caribbean": 0.0, "rho_international": 0.0})
+            ai_score = _extract_alignment_score(_find_alignment_score_row(alignment, "ai jobs", "ai job"))
+            rows.append({"programme": label, "rho_caribbean": 0.0, "rho_international": 0.0, "rho_ai": ai_score if ai_score is not None else float("nan")})
             continue
 
         caribbean = 0.0
@@ -375,11 +415,14 @@ def get_overview_alignment_data() -> pd.DataFrame:
                 international = float(row[intl_col])
                 break
 
+        ai_score = _extract_alignment_score(_find_alignment_score_row(alignment, "ai jobs", "ai job"))
+
         rows.append(
             {
                 "programme": label,
                 "rho_caribbean": caribbean,
                 "rho_international": international,
+                "rho_ai": ai_score if ai_score is not None else float("nan"),
             }
         )
 
